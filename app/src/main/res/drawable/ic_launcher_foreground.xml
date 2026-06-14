@@ -1,0 +1,33 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Crown -->
+    <path
+        android:fillColor="#E6C04A"
+        android:pathData="M37,47 L41,33 L48,41 L54,29 L60,41 L67,33 L71,47 Z" />
+    <path
+        android:fillColor="#C9A227"
+        android:pathData="M37,47 H71 V53 H37 Z" />
+    <path
+        android:fillColor="#0D0B07"
+        android:pathData="M47,40 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 Z" />
+    <path
+        android:fillColor="#0D0B07"
+        android:pathData="M61,40 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 Z" />
+
+    <!-- Sword blade (pointing down) -->
+    <path
+        android:fillColor="#EDE3C2"
+        android:pathData="M51,57 H57 V84 L54,90 L51,84 Z" />
+    <!-- Crossguard -->
+    <path
+        android:fillColor="#C9A227"
+        android:pathData="M43,56 H65 V60 H43 Z" />
+    <!-- Grip -->
+    <path
+        android:fillColor="#8A6A1F"
+        android:pathData="M52,53 H56 V57 H52 Z" />
+</vector>
