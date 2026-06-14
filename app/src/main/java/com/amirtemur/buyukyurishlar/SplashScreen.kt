@@ -25,7 +25,9 @@ class SplashScreen(game: Game) : Screen(game) {
         val figH = h * 0.74f
         val footY = h * 0.90f + (1f - rise) * h * 0.25f
 
-        Art.drawTemur(canvas, w / 2f, footY, figH, t, alpha)
+        val temur = Assets.bmp(game.context, "temur")
+        if (temur != null) Assets.drawFitHeight(canvas, temur, w / 2f, footY, figH, alpha)
+        else Art.drawTemur(canvas, w / 2f, footY, figH, t, alpha)
 
         // ism
         val nameA = ((t - 1.0f) / 1.0f).coerceIn(0f, 1f)

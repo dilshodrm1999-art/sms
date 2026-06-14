@@ -20,10 +20,21 @@ class Sound(var enabled: Boolean) {
 
     fun click() = play { tone(660f, 0.06f, 0.3f) }
     fun confirm() = play { tone(523f, 0.09f, 0.35f) + tone(784f, 0.12f, 0.35f) }
-    fun march() = play { drum(0.5f) }
+    fun march() = play { drum(0.16f) + silence(0.06f) + drum(0.16f) + silence(0.06f) + drum(0.2f) }
     fun clash() = play { noise(0.18f, 0.45f) + tone(180f, 0.18f, 0.25f) }
-    fun victory() = play { tone(523f, 0.14f, 0.4f) + tone(659f, 0.14f, 0.4f) + tone(784f, 0.26f, 0.45f) }
-    fun defeat() = play { tone(392f, 0.18f, 0.4f) + tone(294f, 0.28f, 0.4f) }
+    fun horn() = play { tone(196f, 0.22f, 0.45f) + tone(262f, 0.34f, 0.5f) }      // hujum karnayi
+    fun volley() = play { noise(0.05f, 0.3f) + silence(0.04f) + noise(0.05f, 0.3f) + silence(0.04f) + noise(0.07f, 0.35f) } // o'q yog'di
+    fun gong() = play { tone(330f, 0.28f, 0.4f) + tone(247f, 0.4f, 0.32f) }       // bosqich
+    fun victory() = play {
+        tone(523f, 0.13f, 0.4f) + silence(0.03f) + tone(659f, 0.13f, 0.4f) + silence(0.03f) +
+        tone(784f, 0.16f, 0.42f) + silence(0.03f) + tone(1047f, 0.34f, 0.48f)
+    }
+    fun fanfare() = play {
+        tone(392f, 0.16f, 0.4f) + silence(0.04f) + tone(523f, 0.16f, 0.42f) + silence(0.04f) +
+        tone(659f, 0.16f, 0.42f) + silence(0.04f) + tone(784f, 0.2f, 0.45f) + silence(0.05f) +
+        tone(1047f, 0.5f, 0.5f)
+    }
+    fun defeat() = play { tone(392f, 0.18f, 0.4f) + tone(294f, 0.3f, 0.4f) + tone(220f, 0.4f, 0.38f) }
 
     private fun play(gen: () -> ShortArray) {
         if (!enabled) return
@@ -60,6 +71,9 @@ class Sound(var enabled: Boolean) {
         }
         return out
     }
+
+    /** Sukunat (pauza) */
+    private fun silence(dur: Float): ShortArray = ShortArray((rate * dur).toInt())
 
     /** Shovqin (qilich/jang tovushi) */
     private fun noise(dur: Float, vol: Float): ShortArray {

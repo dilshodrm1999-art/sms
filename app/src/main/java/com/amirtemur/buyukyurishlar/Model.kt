@@ -26,6 +26,15 @@ enum class Strategy(val uz: String, val tavsif: String) {
     QAMAL("Qamal", "Qal'ani qamal qilish. Qamal qurollari shart.")
 }
 
+/** Jang ichidagi har bosqich uchun taktika tanlovi */
+enum class Tactic(val uz: String, val tavsif: String, val atk: Float, val taken: Float, val heal: Float) {
+    HUJUM("Hujum", "Kuchli zarba — lekin ko'proq zarar olasiz.", 1.30f, 1.15f, 0f),
+    MUDOFAA("Mudofaa", "Himoya: kam zarar, biroz qo'shin tiklanadi.", 0.65f, 0.60f, 8f),
+    QANOT("Qanotdan", "Aylanib zarba — dushman hujum qilsa halokatli.", 1.20f, 1.00f, 0f),
+    OQ("O'q yog'dirish", "Masofadan o'q — dushman hujumida juda samarali.", 1.05f, 0.85f, 0f),
+    ZARBA("Hal qiluvchi zarba", "Bor kuch bilan — katta zarar, katta xavf.", 1.65f, 1.35f, 0f)
+}
+
 /** O'yinchi qo'shini */
 class Army {
     val units = HashMap<TroopType, Int>().apply { TroopType.values().forEach { put(it, 0) } }

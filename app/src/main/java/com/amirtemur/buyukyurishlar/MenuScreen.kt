@@ -58,8 +58,10 @@ class MenuScreen(game: Game) : Screen(game) {
     override fun draw(canvas: Canvas) {
         val w = game.width; val h = game.height; val u = game.unit
 
-        // Amir Temur siymosi (chap tomonda)
-        Art.drawTemur(canvas, w * 0.24f, h * 0.99f, h * 0.92f, t)
+        // Amir Temur siymosi (chap tomonda) — rasm bo'lsa o'shani, bo'lmasa vektor
+        val temur = Assets.bmp(game.context, "temur")
+        if (temur != null) Assets.drawFitHeight(canvas, temur, w * 0.24f, h * 0.99f, h * 0.92f, 1f)
+        else Art.drawTemur(canvas, w * 0.24f, h * 0.99f, h * 0.92f, t)
 
         // sarlavha
         Ui.centerText(canvas, "AMIR TEMUR", w * 0.72f, h * 0.16f, u * 8.5f, Palette.GOLD_LIGHT, true)
