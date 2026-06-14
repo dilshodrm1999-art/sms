@@ -13,7 +13,7 @@ APK avtomatik tarzda GitHub Actions orqali quriladi va **Releases** bo'limiga jo
 
 1. Repozitoriyning **Releases** sahifasiga o'ting:
    `https://github.com/dilshodrm1999-art/sms/releases`
-2. Eng so'nggi `latest` relizidan **`AmirTemur-BuyukYurishlar.apk`** faylini yuklab oling.
+2. Eng so'nggi **v2.0** relizidan **`AmirTemur-BuyukYurishlar-v2.0.apk`** faylini yuklab oling.
 3. Telefoningizda **Sozlamalar → Xavfsizlik → Noma'lum manbalardan o'rnatish**ga ruxsat bering.
 4. APK ni o'rnating va o'ynashni boshlang!
 

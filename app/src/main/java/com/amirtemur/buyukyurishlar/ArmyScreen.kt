@@ -111,9 +111,11 @@ class ArmyScreen(game: Game) : Screen(game) {
         troops.forEachIndexed { i, t ->
             val top = pl.top + u * 3f + i * rowH
             val cy = top + rowH / 2f
-            Ui.leftText(canvas, t.uz, pl.left + u * 4f, cy - u * 1.2f, u * 3.4f, Palette.PARCHMENT, true)
+            // unit ikonkasi
+            Art.drawUnit(canvas, t, pl.left + u * 6f, cy + u * 4.2f, u * 7f, Palette.ROYAL, 1, true)
+            Ui.leftText(canvas, t.uz, pl.left + u * 13f, cy - u * 1.2f, u * 3.4f, Palette.PARCHMENT, true)
             Ui.leftText(canvas, "narx: ${t.cost} oltin  •  hujum ${t.attack.toInt()} / himoya ${t.defense.toInt()}",
-                pl.left + u * 4f, cy + u * 3.2f, u * 2.5f, 0xFFB8A06A.toInt())
+                pl.left + u * 13f, cy + u * 3.2f, u * 2.5f, 0xFFB8A06A.toInt())
             // son
             Ui.centerText(canvas, "${army.count(t)}",
                 (minus[i].rect.right + plus[i].rect.left) / 2f, cy, u * 4.2f, Palette.GOLD_LIGHT)

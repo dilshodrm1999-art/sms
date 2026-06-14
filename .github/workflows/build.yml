@@ -38,23 +38,28 @@ jobs:
       - name: Prepare APK
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/AmirTemur-BuyukYurishlar.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/AmirTemur-BuyukYurishlar-v2.0.apk
           ls -la dist
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: AmirTemur-BuyukYurishlar-APK
-          path: dist/AmirTemur-BuyukYurishlar.apk
+          path: dist/AmirTemur-BuyukYurishlar-v2.0.apk
           if-no-files-found: error
 
-      - name: Publish to Release (latest)
+      - name: Publish to Release (v2.0)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest
-          name: "Amir Temur: Buyuk Yurishlar — so'nggi APK"
-          files: dist/AmirTemur-BuyukYurishlar.apk
+          tag_name: v2.0
+          name: "Amir Temur: Buyuk Yurishlar — v2.0"
+          files: dist/AmirTemur-BuyukYurishlar-v2.0.apk
           body: |
-            Tayyor o'rnatiladigan APK (debug imzo bilan).
-            Telefoningizga yuklab oling va "Noma'lum manbalardan o'rnatish"ga ruxsat bering.
+            v2.0 — yangilangan zamonaviy grafika:
+            • O'yin boshlanishida Amir Temur siymosi gavdalanadi
+            • Janglar real unit ikonalari (otliq, kamonchi, piyoda, zirhli, qamal) + uchuvchi o'qlar bilan
+            • Yangilangan zamonaviy UI, animatsiyalar va muvozanat (o'yin yengilroq)
+
+            Tayyor o'rnatiladigan APK (debug imzo bilan). Telefoningizga yuklab,
+            "Noma'lum manbalardan o'rnatish"ga ruxsat bering.
             Build raqami: ${{ github.run_number }}
