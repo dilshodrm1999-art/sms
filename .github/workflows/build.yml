@@ -38,28 +38,28 @@ jobs:
       - name: Prepare APK
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/AmirTemur-BuyukYurishlar-v3.0.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/AmirTemur-BuyukYurishlar-v4.0.apk
           ls -la dist
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: AmirTemur-BuyukYurishlar-APK
-          path: dist/AmirTemur-BuyukYurishlar-v3.0.apk
+          path: dist/AmirTemur-BuyukYurishlar-v4.0.apk
           if-no-files-found: error
 
-      - name: Publish to Release (v3.0)
+      - name: Publish to Release (v4.0)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v3.0
-          name: "Amir Temur: Buyuk Yurishlar — v3.0"
-          files: dist/AmirTemur-BuyukYurishlar-v3.0.apk
+          tag_name: v4.0
+          name: "Amir Temur: Buyuk Yurishlar — v4.0"
+          files: dist/AmirTemur-BuyukYurishlar-v4.0.apk
           body: |
-            v3.0 — yangiliklar:
-            • Bosqichli (round) taktik jang: har bosqichda taktika tanlaysiz, janglar uzoqroq va strategikroq
-            • Ta'sirli yakuniy sahna: imperiya bosqichma-bosqich yorishadi, maxsus ovozlar
-            • Yangi maxsus effekt-saundlar (karnay, o'q yog'dirish, gong, g'alaba fanfarasi)
-            • Ixtiyoriy rasm yuklash: drawable ichiga temur.png qo'ysangiz avtomatik ishlatiladi
+            v4.0 — yangiliklar:
+            • 2.5D (pseudo-3D) jang maydoni: perspektiv yer, chuqurlik, soyalar, soyali ikonalar
+            • Real vaqtli jang (~13 soniya): ekranni bosib kamondan o'q uzasiz, 2 soniya qayta o'qlash
+            • Shaharlararo yurish: 1 daqiqalik (60s) teskari sanoq + tarixiy yil/ma'lumot
+            • Yaxshilangan unit ikonalari va strategiya, maxsus effekt-saundlar
 
             Tayyor o'rnatiladigan APK (debug imzo). "Noma'lum manbalardan o'rnatish"ga ruxsat bering.
             Build raqami: ${{ github.run_number }}

@@ -3,16 +3,16 @@ package com.amirtemur.buyukyurishlar
 import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Shader
-import kotlin.math.atan2
 import kotlin.math.sin
 import kotlin.random.Random
 
 /**
- * Bosqichli (round) taktik jang: har bosqichda o'yinchi taktika tanlaydi,
- * taktikalar bir-birini "counter" qiladi. Jang dushman yoki o'yinchi
- * ruhiyati (morale) tugaguncha davom etadi — bu o'yinni strategik cho'zadi.
+ * Real vaqtli (10–15 soniya) jang. 2.5D (pseudo-3D) maydon.
+ * Ekranni bosib kamondan o'q uzasiz; har otishdan keyin 2 soniya qayta o'qlash.
+ * Qo'shin va strategiya asosiy kuchni, kamon mahorati esa qo'shimcha ustunlikni beradi.
  */
 class BattleScreen(game: Game) : Screen(game) {
 
@@ -20,320 +20,279 @@ class BattleScreen(game: Game) : Screen(game) {
     private val army = game.playerArmy
     private val strategy = game.chosenStrategy
 
-    private enum class Phase { INTRO, CHOOSE, CLASH, ROUNDEND, FINISH }
-    private var phase = Phase.INTRO
-    private var phaseT = 0f
-
+    private val duration = 13f
+    private var t = 0f
     private var pMorale = 100f
     private var eMorale = 100f
-    private var round = 1
-    private val maxRounds = 6
     private val ratio: Float
+    private val eDrain: Float
+    private val pDrain: Float
 
-    private var chosen: Tactic? = null
-    private var enemyTactic: Tactic = Tactic.HUJUM
-    private var dmgE = 0f
-    private var dmgP = 0f
-    private var applied = false
+    private val reloadTime = 2f
+    private var reload = 0f
+    private var aimX = 0f
+    private var shots = 0
+    private var hits = 0
+
+    private var finished = false
     private var resultStored = false
-
     private var clashTick = 0f
+    private var ambientTick = 1.2f
 
-    private data class Slot(val type: TroopType, val depth: Int, val row: Int)
-    private val rows = 4
-    private val cap = 22
-    private val playerSlots: List<Slot>
-    private val enemySlots: List<Slot>
-
-    private class Proj(var x0: Float, var y0: Float, var x1: Float, var y1: Float, var age: Float, val dur: Float)
-    private val arrows = ArrayList<Proj>()
-
-    private val tacticButtons = Tactic.values().map { Button(it.uz) }
     private val bContinue = Button("NATIJA ▸")
 
-    init {
-        ratio = (army.power(strategy, c.terrain) / c.enemyPower.coerceAtLeast(1f)).coerceIn(0.5f, 2.2f)
-        playerSlots = buildFormation(visibleCounts(army.units))
-        enemySlots = buildFormation(visibleCounts(enemyComposition()))
+    private class Proj(val x0: Float, val y0: Float, val x1: Float, val y1: Float,
+                       var age: Float, val dur: Float, val fromEnemy: Boolean, val dmg: Float, var applied: Boolean = false)
+    private val arrows = ArrayList<Proj>()
+    private class Spark(val x: Float, val y: Float, var age: Float)
+    private val sparks = ArrayList<Spark>()
 
-        Tactic.values().forEachIndexed { i, tac -> tacticButtons[i].onClick = { chooseTactic(tac) } }
+    private class Tok(val type: TroopType, val col: Int, val row: Int, val cols: Int)
+    private val enemyToks: List<Tok>
+    private val playerToks: List<Tok>
+
+    init {
+        ratio = (army.power(strategy, c.terrain) / c.enemyPower.coerceAtLeast(1f)).coerceIn(0.5f, 2.3f)
+        val edgeP = 2f * ratio / (ratio + 1f)
+        val edgeE = 2f / (ratio + 1f)
+        eDrain = 6.4f * edgeP
+        pDrain = 5.8f * edgeE
+        enemyToks = build(enemyComposition(), 6, 3)
+        playerToks = build(army.units, 7, 2)
         bContinue.onClick = { game.sound.confirm(); game.setScreen(ResultScreen(game)) }
-        buttons.addAll(tacticButtons); buttons.add(bContinue)
-        tacticButtons.forEach { it.visible = false }
-        bContinue.visible = false
-        game.sound.gong()
+        buttons.add(bContinue); bContinue.visible = false
+        game.sound.horn()
     }
 
+    override fun onShow() { aimX = game.width / 2f }
     override fun onResize(w: Int, h: Int) {
+        aimX = w / 2f
         val u = game.unit
-        val n = tacticButtons.size
-        val pad = u * 2f
-        val totalW = w - pad * 2f
-        val bw = (totalW - pad * (n - 1)) / n
-        val bh = u * 13f
-        val y = h - bh - u * 2f
-        tacticButtons.forEachIndexed { i, b -> b.set(pad + i * (bw + pad), y, pad + i * (bw + pad) + bw, y + bh) }
         bContinue.set(w / 2f - u * 22f, h - u * 13f, w / 2f + u * 22f, h - u * 3f)
     }
 
-    // ---------------- formatsiya ----------------
     private fun enemyComposition(): Map<TroopType, Int> {
         val p = c.enemyPower
         return mapOf(
-            TroopType.OTLIQ to (p * 0.30f).toInt(),
-            TroopType.PIYODA to (p * 0.38f).toInt(),
-            TroopType.KAMONCHI to (p * 0.20f).toInt(),
-            TroopType.ZIRH to (p * 0.12f).toInt()
+            TroopType.OTLIQ to (p * 0.30f).toInt(), TroopType.PIYODA to (p * 0.40f).toInt(),
+            TroopType.KAMONCHI to (p * 0.18f).toInt(), TroopType.ZIRH to (p * 0.12f).toInt()
         )
     }
-    private fun visibleCounts(src: Map<TroopType, Int>): Map<TroopType, Int> {
+    private fun build(src: Map<TroopType, Int>, cols: Int, rows: Int): List<Tok> {
+        val cap = cols * rows
         val total = src.values.sum().coerceAtLeast(1)
-        val out = LinkedHashMap<TroopType, Int>()
-        var sum = 0
-        for (type in listOf(TroopType.OTLIQ, TroopType.PIYODA, TroopType.ZIRH, TroopType.KAMONCHI, TroopType.QAMAL)) {
-            val nn = src[type] ?: 0
-            if (nn <= 0) continue
-            var v = Math.round(nn.toFloat() / total * cap); if (v < 1) v = 1
-            out[type] = v; sum += v
-        }
-        while (sum > cap) { val k = out.maxByOrNull { it.value }?.key ?: break; out[k] = out[k]!! - 1; if (out[k] == 0) out.remove(k); sum-- }
-        return out
-    }
-    private fun buildFormation(counts: Map<TroopType, Int>): List<Slot> {
         val ordered = ArrayList<TroopType>()
-        for (type in listOf(TroopType.OTLIQ, TroopType.PIYODA, TroopType.ZIRH, TroopType.KAMONCHI, TroopType.QAMAL))
-            repeat(counts[type] ?: 0) { ordered.add(type) }
-        return ordered.mapIndexed { i, type -> Slot(type, i / rows, i % rows) }
-    }
-    private fun aliveCount(slots: List<Slot>, frac: Float): Int {
-        if (slots.isEmpty()) return 0
-        return (slots.size * frac).toInt().coerceIn(if (frac > 0.02f) 1 else 0, slots.size)
-    }
-
-    // ---------------- taktika ----------------
-    private fun chooseTactic(tac: Tactic) {
-        if (phase != Phase.CHOOSE) return
-        chosen = tac
-        enemyTactic = pickEnemyTactic()
-        computeDamage(tac, enemyTactic)
-        applied = false
-        phase = Phase.CLASH; phaseT = 0f
-        when (tac) {
-            Tactic.HUJUM, Tactic.ZARBA, Tactic.QANOT -> game.sound.horn()
-            Tactic.OQ -> game.sound.volley()
-            Tactic.MUDOFAA -> game.sound.march()
+        for (type in listOf(TroopType.OTLIQ, TroopType.PIYODA, TroopType.ZIRH, TroopType.KAMONCHI, TroopType.QAMAL)) {
+            var v = Math.round((src[type] ?: 0).toFloat() / total * cap)
+            if ((src[type] ?: 0) > 0 && v < 1) v = 1
+            repeat(v) { if (ordered.size < cap) ordered.add(type) }
         }
-        if (tac == Tactic.OQ || enemyTactic == Tactic.OQ) spawnArrows()
+        return ordered.mapIndexed { i, type -> Tok(type, i % cols, i / cols, cols) }
+    }
+    private fun aliveOf(list: List<Tok>, frac: Float) =
+        if (list.isEmpty()) 0 else (list.size * frac).toInt().coerceIn(if (frac > 0.02f) 1 else 0, list.size)
+
+    override fun onDown(x: Float, y: Float) {
+        if (!finished) {
+            aimX = x
+            if (reload <= 0f) fire(x, y)
+        } else super.onDown(x, y)
+    }
+    override fun onUp(x: Float, y: Float) { if (finished) super.onUp(x, y) }
+    override fun onBack(): Boolean { if (finished) game.setScreen(ResultScreen(game)); return true }
+
+    private fun fire(tx: Float, ty: Float) {
+        val w = game.width; val h = game.height
+        val targetY = ty.coerceIn(h * 0.34f, h * 0.6f)
+        arrows.add(Proj(w / 2f, h * 0.9f, tx, targetY, 0f, 0.5f, false, 8f))
+        reload = reloadTime; shots++
+        game.sound.volley()
     }
 
-    private fun pickEnemyTactic(): Tactic {
-        val r = Random.nextFloat()
-        return when {
-            r < 0.30f -> Tactic.HUJUM
-            r < 0.50f -> Tactic.MUDOFAA
-            r < 0.70f -> Tactic.QANOT
-            r < 0.85f -> Tactic.OQ
-            else -> Tactic.ZARBA
+    override fun update(dt: Float) {
+        if (!finished) {
+            t += dt
+            reload = (reload - dt).coerceAtLeast(0f)
+            pMorale = (pMorale - pDrain * dt).coerceAtLeast(0f)
+            eMorale = (eMorale - eDrain * dt).coerceAtLeast(0f)
+            clashTick -= dt
+            if (clashTick <= 0f) { game.sound.clash(); clashTick = 0.7f }
+            ambientTick -= dt
+            if (ambientTick <= 0f) { spawnEnemyArrow(); ambientTick = 1.1f + Random.nextFloat() }
+            if (t >= duration || eMorale <= 0f || pMorale <= 0f) finish()
         }
-    }
-
-    private fun counter(att: Tactic, def: Tactic): Float = when {
-        att == Tactic.QANOT && def == Tactic.HUJUM -> 1.35f
-        att == Tactic.OQ && def == Tactic.HUJUM -> 1.25f
-        att == Tactic.ZARBA && def == Tactic.MUDOFAA -> 1.20f
-        att == Tactic.HUJUM && def == Tactic.QANOT -> 0.85f
-        att == Tactic.HUJUM && def == Tactic.OQ -> 0.85f
-        else -> 1f
-    }
-
-    private fun computeDamage(pt: Tactic, et: Tactic) {
-        val atk = 22f
-        val edgeP = 2f * ratio / (ratio + 1f)
-        val edgeE = 2f / (ratio + 1f)
-        dmgE = atk * edgeP * pt.atk * et.taken * counter(pt, et) * (0.85f + Random.nextFloat() * 0.3f)
-        dmgP = atk * 0.92f * edgeE * et.atk * pt.taken * counter(et, pt) * (0.85f + Random.nextFloat() * 0.3f)
-    }
-
-    private fun applyDamage() {
-        eMorale = (eMorale - dmgE).coerceAtLeast(0f)
-        pMorale = (pMorale - dmgP + (chosen?.heal ?: 0f)).coerceIn(0f, 100f)
-        game.sound.clash()
-    }
-
-    private fun spawnArrows() {
-        val w = game.width; val h = game.height; val midY = h * 0.55f
-        repeat(3) {
-            arrows.add(Proj(frontXp() - game.unit * 12f, midY + (Random.nextFloat() - 0.5f) * h * 0.4f,
-                frontXe() + game.unit * 6f, midY + (Random.nextFloat() - 0.5f) * h * 0.35f, 0f, 0.6f))
-            arrows.add(Proj(frontXe() + game.unit * 12f, midY + (Random.nextFloat() - 0.5f) * h * 0.4f,
-                frontXp() - game.unit * 6f, midY + (Random.nextFloat() - 0.5f) * h * 0.35f, 0f, 0.6f))
+        // arrows
+        val it = arrows.iterator()
+        while (it.hasNext()) {
+            val a = it.next(); a.age += dt
+            if (!a.applied && a.age >= a.dur * 0.95f) {
+                a.applied = true
+                if (a.fromEnemy) pMorale = (pMorale - a.dmg).coerceAtLeast(0f)
+                else { eMorale = (eMorale - a.dmg).coerceAtLeast(0f); hits++ }
+                sparks.add(Spark(a.x1, a.y1, 0f))
+            }
+            if (a.age > a.dur + 0.2f) it.remove()
         }
+        val si = sparks.iterator()
+        while (si.hasNext()) { val s = si.next(); s.age += dt; if (s.age > 0.4f) si.remove() }
+        bContinue.visible = finished
     }
 
-    private fun enterFinish() {
-        phase = Phase.FINISH; phaseT = 0f
+    private fun spawnEnemyArrow() {
+        val w = game.width; val h = game.height
+        arrows.add(Proj(w * (0.3f + Random.nextFloat() * 0.4f), h * 0.45f,
+            w * (0.35f + Random.nextFloat() * 0.3f), h * 0.82f, 0f, 0.7f, true, 1.5f))
+    }
+
+    private fun finish() {
+        if (finished) return
+        finished = true
         if (!resultStored) {
             resultStored = true
             val win = pMorale > 0f && (eMorale <= 0f || pMorale >= eMorale)
             val lossPct = (100f - pMorale).toInt().coerceIn(0, 100)
             val rating = when { !win -> 0; pMorale >= 60 -> 3; pMorale >= 30 -> 2; else -> 1 }
-            val res = BattleResult(win, army.power(strategy, c.terrain), c.enemyPower, lossPct, strategy, rating)
-            game.lastResult = res
+            game.lastResult = BattleResult(win, army.power(strategy, c.terrain), c.enemyPower, lossPct, strategy, rating)
             if (win) game.sound.fanfare() else game.sound.defeat()
         }
         bContinue.visible = true
     }
 
-    override fun update(dt: Float) {
-        phaseT += dt
-        when (phase) {
-            Phase.INTRO -> if (phaseT > 1.0f) { phase = Phase.CHOOSE; phaseT = 0f }
-            Phase.CHOOSE -> {}
-            Phase.CLASH -> {
-                clashTick -= dt
-                if (clashTick <= 0f) { game.sound.clash(); clashTick = 0.5f }
-                if (phaseT >= 1.2f && !applied) { applied = true; applyDamage() }
-                if (phaseT >= 2.6f) { phase = Phase.ROUNDEND; phaseT = 0f }
-            }
-            Phase.ROUNDEND -> if (phaseT > 1.2f) {
-                if (eMorale <= 0f || pMorale <= 0f || round >= maxRounds) enterFinish()
-                else { round++; phase = Phase.CHOOSE; phaseT = 0f }
-            }
-            Phase.FINISH -> {}
-        }
-        tacticButtons.forEach { it.visible = phase == Phase.CHOOSE }
-        bContinue.visible = phase == Phase.FINISH
-        val it = arrows.iterator()
-        while (it.hasNext()) { val a = it.next(); a.age += dt; if (a.age > a.dur) it.remove() }
-    }
-
-    override fun onUp(x: Float, y: Float) { super.onUp(x, y) }
-    override fun onBack(): Boolean { if (phase == Phase.FINISH) game.setScreen(ResultScreen(game)); return true }
-
-    private fun ease(x: Float) = 1f - (1f - x) * (1f - x)
-    private fun clashAdvance(): Float {
-        if (phase != Phase.CLASH) return 0f
-        val k = (phaseT / 2.6f).coerceIn(0f, 1f)
-        return sin(k * Math.PI).toFloat() * game.width * 0.15f
-    }
-    private fun frontXp() = game.width * 0.31f + clashAdvance()
-    private fun frontXe() = game.width * 0.69f - clashAdvance()
-
     override fun draw(canvas: Canvas) {
         val w = game.width; val h = game.height; val u = game.unit
-        val midY = h * 0.55f
+        val horizon = h * 0.30f
 
-        // osmon va yer
-        Ui.paint.shader = LinearGradient(0f, 0f, 0f, h.toFloat(),
-            intArrayOf(0xFF2A2418.toInt(), 0xFF17110A.toInt()), floatArrayOf(0f, 1f), Shader.TileMode.CLAMP)
+        // === 2.5D maydon ===
+        // osmon
         Ui.paint.style = Paint.Style.FILL
-        canvas.drawRect(0f, h * 0.28f, w.toFloat(), h * 0.62f, Ui.paint)
+        Ui.paint.shader = LinearGradient(0f, 0f, 0f, horizon,
+            intArrayOf(0xFF3A4A66.toInt(), 0xFF8A7A55.toInt()), null, Shader.TileMode.CLAMP)
+        canvas.drawRect(0f, 0f, w.toFloat(), horizon, Ui.paint)
         Ui.paint.shader = null
-        Ui.paint.color = 0xFF221A0E.toInt(); canvas.drawRect(0f, h * 0.62f, w.toFloat(), h.toFloat(), Ui.paint)
-        Ui.paint.color = 0xFF2E2414.toInt(); canvas.drawRect(0f, h * 0.62f, w.toFloat(), h * 0.635f, Ui.paint)
+        // quyosh
+        Art.glow(canvas, w * 0.75f, horizon * 0.55f, u * 22f, 0xFFFFE08A.toInt(), 130)
+        Ui.paint.color = 0xFFFFE7A6.toInt(); canvas.drawCircle(w * 0.75f, horizon * 0.55f, u * 6f, Ui.paint)
+        // tog'lar
+        Ui.paint.color = 0xFF2A2236.toInt()
+        val mt = Path().apply {
+            moveTo(0f, horizon)
+            lineTo(w * 0.2f, horizon - u * 10f); lineTo(w * 0.4f, horizon)
+            lineTo(w * 0.6f, horizon - u * 14f); lineTo(w * 0.8f, horizon); lineTo(w.toFloat(), horizon - u * 8f)
+            lineTo(w.toFloat(), horizon); close()
+        }
+        canvas.drawPath(mt, Ui.paint)
+        // yer (perspektiv gradient)
+        Ui.paint.shader = LinearGradient(0f, horizon, 0f, h.toFloat(),
+            intArrayOf(0xFF5A6B3A.toInt(), 0xFF2A2412.toInt()), null, Shader.TileMode.CLAMP)
+        canvas.drawRect(0f, horizon, w.toFloat(), h.toFloat(), Ui.paint)
+        Ui.paint.shader = null
+        // perspektiv chiziqlar
+        Ui.stroke.color = 0x22000000; Ui.stroke.strokeWidth = u * 0.3f
+        for (i in 0..6) {
+            val fx = w * i / 6f
+            canvas.drawLine(w / 2f, horizon, fx, h.toFloat(), Ui.stroke)
+        }
 
-        Ui.centerText(canvas, c.title, w / 2f, u * 5.5f, u * 3.8f, Palette.GOLD_LIGHT, true)
-        Ui.centerText(canvas, "Bosqich $round / $maxRounds  •  Strategiya: ${strategy.uz}", w / 2f, u * 10f, u * 2.9f, Palette.GOLD)
+        val eAlive = aliveOf(enemyToks, eMorale / 100f)
+        val pAlive = aliveOf(playerToks, pMorale / 100f)
+        val advance = (t / duration) * h * 0.05f
 
-        val pAlive = aliveCount(playerSlots, pMorale / 100f)
-        val eAlive = aliveCount(enemySlots, eMorale / 100f)
+        // dushman (uzoqda, kichik) — orqa qatordan oldinga
+        for (row in 2 downTo 0) {
+            for (i in enemyToks.indices) {
+                val tk = enemyToks[i]; if (tk.row != row) continue
+                val s = u * (3.0f + row * 0.9f)
+                val y = horizon + u * 7f + row * u * 7f + advance
+                val x = w / 2f + (tk.col - (tk.cols - 1) / 2f) * u * (9f + row * 1.2f)
+                if (i < eAlive) Art.trooper(canvas, x, y, s, Palette.RED, true, tk.type)
+                else Art.shadow(canvas, x, y, s * 0.4f, s * 0.12f)
+            }
+        }
 
-        canvas.save()
-        if (phase == Phase.CLASH && phaseT in 1.0f..2.4f) canvas.translate(sin(phaseT * 55f) * u * 0.7f, 0f)
-        val s = u * 4.4f
-        drawFormation(canvas, playerSlots, pAlive, frontXp(), midY, s, u * 6.2f, u * 7.2f, +1, Palette.ROYAL)
-        drawFormation(canvas, enemySlots, eAlive, frontXe(), midY, s, u * 6.2f, u * 7.2f, -1, Palette.RED)
+        // clash uchqun chizig'i
+        if (t > 0.5f) {
+            Ui.paint.style = Paint.Style.FILL
+            for (i in 0 until 12) {
+                val sx = w / 2f + (Random.nextFloat() - 0.5f) * w * 0.5f
+                val sy = h * 0.55f + (Random.nextFloat() - 0.5f) * h * 0.08f
+                Ui.paint.color = if (i % 2 == 0) Palette.GOLD_LIGHT else 0xFFFF8A3D.toInt()
+                canvas.drawCircle(sx, sy, u * (0.4f + Random.nextFloat() * 0.9f), Ui.paint)
+            }
+        }
 
+        // o'yinchi qo'shini (oldinda, katta, orqadan)
+        for (row in 0..1) {
+            for (i in playerToks.indices) {
+                val tk = playerToks[i]; if (tk.row != row) continue
+                val s = u * (6.2f - row * 1.0f)
+                val y = h * 0.70f + row * u * 8f
+                val x = w / 2f + (tk.col - (tk.cols - 1) / 2f) * u * 12f
+                if (i < pAlive) Art.trooper(canvas, x, y, s, Palette.ROYAL, false, tk.type)
+            }
+        }
+
+        // o'qlar
         for (a in arrows) {
             val k = (a.age / a.dur).coerceIn(0f, 1f)
             val x = a.x0 + (a.x1 - a.x0) * k
-            val y = a.y0 + (a.y1 - a.y0) * k - sin(k * Math.PI).toFloat() * u * 10f
-            val k2 = (k + 0.02f)
+            val arc = -sin(k * Math.PI).toFloat() * (game.height * 0.12f)
+            val y = a.y0 + (a.y1 - a.y0) * k + arc
+            val k2 = (k + 0.03f)
             val nx = a.x0 + (a.x1 - a.x0) * k2
-            val ny = a.y0 + (a.y1 - a.y0) * k2 - sin(k2 * Math.PI).toFloat() * u * 10f
-            Art.drawArrow(canvas, x, y, atan2(ny - y, nx - x), u * 4f, Palette.PARCHMENT)
+            val ny = a.y0 + (a.y1 - a.y0) * k2 + (-sin(k2 * Math.PI).toFloat() * game.height * 0.12f)
+            Art.drawArrow(canvas, x, y, kotlin.math.atan2(ny - y, nx - x), u * 4.5f, Palette.PARCHMENT)
         }
-
-        if (phase == Phase.CLASH && phaseT > 1.0f) {
-            Ui.paint.style = Paint.Style.FILL
-            val clx = (frontXp() + frontXe()) / 2f
-            for (i in 0 until 20) {
-                val sx = clx + (Random.nextFloat() - 0.5f) * u * 18f
-                val sy = midY + (Random.nextFloat() - 0.5f) * h * 0.42f
-                Ui.paint.color = if (i % 3 == 0) Palette.GOLD_LIGHT else if (i % 3 == 1) 0xFFFF8A3D.toInt() else 0xAA8A6A3A.toInt()
-                canvas.drawCircle(sx, sy, u * (0.4f + Random.nextFloat() * 1.1f), Ui.paint)
-            }
+        // impact sparks
+        Ui.paint.style = Paint.Style.FILL
+        for (s in sparks) {
+            Ui.paint.color = Palette.GOLD_LIGHT; Ui.paint.alpha = ((1f - s.age / 0.4f) * 255).toInt().coerceIn(0, 255)
+            canvas.drawCircle(s.x, s.y, u * (1f + s.age * 8f), Ui.paint)
         }
-        canvas.restore()
+        Ui.paint.alpha = 255
 
-        // bayroqlar (morale)
-        drawBanner(canvas, "AMIR TEMUR QO'SHINI", pMorale / 100f, Palette.ROYAL, u * 4f, u * 13.5f, w * 0.42f, u, true)
-        drawBanner(canvas, c.enemy, eMorale / 100f, Palette.RED, w * 0.58f, u * 13.5f, w - u * 4f, u, false)
+        // qahramon kamonchi (past markaz)
+        val pull = (1f - reload / reloadTime).coerceIn(0f, 1f)
+        Art.heroBow(canvas, w / 2f, h * 0.92f, u * 9f, pull, aimX - w / 2f)
 
-        when (phase) {
-            Phase.INTRO -> Ui.centerText(canvas, "$round-bosqich!", w / 2f, midY, u * 8f, Palette.GOLD_LIGHT, true)
-            Phase.CHOOSE -> drawChoose(canvas, w, h, u)
-            Phase.CLASH -> drawClashInfo(canvas, w, h, u)
-            Phase.ROUNDEND -> Ui.centerText(canvas, "Bosqich yakunlandi", w / 2f, h - u * 18f, u * 3.4f, Palette.GOLD)
-            Phase.FINISH -> drawFinish(canvas, w, h, u)
+        // === HUD ===
+        Ui.centerText(canvas, c.title, w / 2f, u * 5f, u * 3.6f, Palette.GOLD_LIGHT, true)
+        drawBar(canvas, "SIZ", pMorale / 100f, Palette.ROYAL, u * 3f, u * 9f, w * 0.38f, u, true)
+        drawBar(canvas, c.enemy, eMorale / 100f, Palette.RED, w * 0.62f, u * 9f, w - u * 3f, u, false)
+
+        // taymer
+        val left = (duration - t).coerceAtLeast(0f)
+        Ui.centerText(canvas, "${left.toInt() + if (left > 0f) 1 else 0}", w / 2f, u * 9f, u * 6f, Palette.GOLD_LIGHT, true)
+
+        // qayta o'qlash ko'rsatkichi
+        val rb = RectF(w / 2f - u * 16f, h - u * 4.5f, w / 2f + u * 16f, h - u * 2f)
+        Ui.fill(canvas, rb, 0xAA000000.toInt(), u)
+        if (reload > 0f) {
+            Ui.fill(canvas, RectF(rb.left, rb.top, rb.left + rb.width() * (1f - reload / reloadTime), rb.bottom), Palette.GOLD_DEEP, u)
+            Ui.centerText(canvas, "Qayta o'qlanmoqda...", rb.centerX(), rb.centerY(), u * 2.6f, Palette.PARCHMENT)
+        } else {
+            Ui.fill(canvas, rb, Palette.GREEN, u)
+            Ui.centerText(canvas, "BOSIB O'Q UZING!", rb.centerX(), rb.centerY(), u * 2.8f, Palette.PARCHMENT)
         }
-    }
+        Ui.centerText(canvas, "O'q: $shots  •  Nishon: $hits", w / 2f, h - u * 6f, u * 2.6f, 0xFFB8A06A.toInt())
 
-    private fun drawChoose(canvas: Canvas, w: Int, h: Int, u: Float) {
-        Ui.glassPanel(canvas, RectF(w * 0.18f, h - u * 30f, w * 0.82f, h - u * 16.5f), u * 1.5f, 0xAA)
-        Ui.centerText(canvas, "Taktikani tanlang", w / 2f, h - u * 26f, u * 3.4f, Palette.GOLD_LIGHT)
-        Ui.centerText(canvas, "Maslahat: Qanot — dushman hujumini, O'q — hujumchini yaxshi yengadi.",
-            w / 2f, h - u * 21.5f, u * 2.7f, Palette.PARCHMENT)
-        Ui.centerText(canvas, "Maglubiyatdan saqlaning: Mudofaa kam zarar oladi va qo'shinni tiklaydi.",
-            w / 2f, h - u * 18f, u * 2.7f, 0xFFB8A06A.toInt())
-        // taktika tugmalari (kichik tavsif bilan)
-        tacticButtons.forEachIndexed { i, b ->
-            Ui.woodButton(canvas, b, u)
-        }
-    }
-
-    private fun drawClashInfo(canvas: Canvas, w: Int, h: Int, u: Float) {
-        Ui.centerText(canvas, "Siz: ${chosen?.uz}   ⚔   Dushman: ${enemyTactic.uz}",
-            w / 2f, h - u * 6f, u * 3f, Palette.PARCHMENT)
-        if (applied) {
-            val rise = ((phaseT - 1.2f) * u * 5f)
-            Ui.centerText(canvas, "-${dmgE.toInt()}", w * 0.70f, h * 0.30f - rise, u * 4.5f, Palette.GOLD_LIGHT, true)
-            Ui.centerText(canvas, "-${dmgP.toInt()}", w * 0.30f, h * 0.30f - rise, u * 4.5f, Palette.RED, true)
+        if (finished) {
+            val win = game.lastResult?.win == true
+            Ui.glassPanel(canvas, RectF(w / 2f - u * 28f, h * 0.36f, w / 2f + u * 28f, h * 0.54f), u * 2f, 0xCC)
+            Ui.centerText(canvas, if (win) "G'ALABA!" else "MAG'LUBIYAT", w / 2f, h * 0.43f, u * 8f,
+                if (win) Palette.GOLD_LIGHT else Palette.RED, true)
+            Ui.centerText(canvas, "Qolgan kuch: ${pMorale.toInt()}%   Nishonga: $hits o'q", w / 2f, h * 0.50f, u * 3f, Palette.PARCHMENT)
+            drawButtons(canvas)
         }
     }
 
-    private fun drawFinish(canvas: Canvas, w: Int, h: Int, u: Float) {
-        val win = game.lastResult?.win == true
-        Ui.glassPanel(canvas, RectF(w / 2f - u * 28f, h * 0.34f, w / 2f + u * 28f, h * 0.52f), u * 2f, 0xCC)
-        Ui.centerText(canvas, if (win) "G'ALABA!" else "MAG'LUBIYAT", w / 2f, h * 0.40f, u * 8f,
-            if (win) Palette.GOLD_LIGHT else Palette.RED, true)
-        Ui.centerText(canvas, "Qolgan ruhiyat: ${pMorale.toInt()}%", w / 2f, h * 0.475f, u * 3.2f, Palette.PARCHMENT)
-        drawButtons(canvas)
-    }
-
-    private fun drawFormation(canvas: Canvas, slots: List<Slot>, alive: Int, frontX: Float, midY: Float,
-                              s: Float, spX: Float, spY: Float, dir: Int, cloth: Int) {
-        val maxDepth = (slots.maxOfOrNull { it.depth } ?: 0)
-        for (d in maxDepth downTo 0) {
-            for (i in slots.indices) {
-                val slot = slots[i]
-                if (slot.depth != d) continue
-                val x = frontX - dir * slot.depth * spX
-                val y = midY + (slot.row - (rows - 1) / 2f) * spY + slot.depth * s * 0.15f
-                Art.drawUnit(canvas, slot.type, x, y, s, cloth, dir, i < alive)
-            }
-        }
-    }
-
-    private fun drawBanner(canvas: Canvas, name: String, frac: Float, color: Int,
-                           left: Float, top: Float, right: Float, u: Float, alignLeft: Boolean) {
-        val barRect = RectF(left, top + u * 5f, right, top + u * 8.5f)
-        Ui.fill(canvas, barRect, 0xFF2A1E10.toInt(), u * 0.8f)
-        val fillW = (barRect.width() - u * 0.8f) * frac.coerceIn(0f, 1f)
-        Ui.fill(canvas, RectF(barRect.left + u * 0.4f, barRect.top + u * 0.4f, barRect.left + u * 0.4f + fillW, barRect.bottom - u * 0.4f), color, u * 0.6f)
-        Ui.border(canvas, barRect, Palette.GOLD, u * 0.35f, u * 0.8f)
-        val nx = if (alignLeft) left else right - Ui.measure(name, u * 3.2f)
-        Ui.leftText(canvas, name, nx, top + u * 3.5f, u * 3.2f, Palette.PARCHMENT, true)
-        Ui.centerText(canvas, "${(frac * 100).toInt()}%", barRect.centerX(), barRect.centerY(), u * 2.6f, Palette.PARCHMENT)
+    private fun drawBar(canvas: Canvas, name: String, frac: Float, color: Int,
+                        left: Float, top: Float, right: Float, u: Float, alignLeft: Boolean) {
+        val bar = RectF(left, top + u * 3f, right, top + u * 6f)
+        Ui.fill(canvas, bar, 0xFF2A1E10.toInt(), u * 0.8f)
+        val fw = (bar.width() - u * 0.8f) * frac.coerceIn(0f, 1f)
+        Ui.fill(canvas, RectF(bar.left + u * 0.4f, bar.top + u * 0.4f, bar.left + u * 0.4f + fw, bar.bottom - u * 0.4f), color, u * 0.6f)
+        Ui.border(canvas, bar, Palette.GOLD, u * 0.3f, u * 0.8f)
+        val nx = if (alignLeft) left else right - Ui.measure(name, u * 2.8f)
+        Ui.leftText(canvas, name, nx, top + u * 2f, u * 2.8f, Palette.PARCHMENT, true)
     }
 }

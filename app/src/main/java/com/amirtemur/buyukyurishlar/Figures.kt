@@ -286,4 +286,119 @@ object Art {
             tipx + cos(a1) * len * 0.22f, tipy + sin(a1) * len * 0.22f,
             tipx + cos(a2) * len * 0.22f, tipy + sin(a2) * len * 0.22f)
     }
+
+    // ===================== 2.5D (pseudo-3D) yordamchilari =====================
+    private fun mix(a: Int, b: Int, t: Float): Int {
+        val it = 1f - t
+        val ar = (a ushr 16) and 0xFF; val ag = (a ushr 8) and 0xFF; val ab = a and 0xFF
+        val br = (b ushr 16) and 0xFF; val bg = (b ushr 8) and 0xFF; val bb = b and 0xFF
+        return (0xFF shl 24) or (((ar * it + br * t).toInt()) shl 16) or
+            (((ag * it + bg * t).toInt()) shl 8) or ((ab * it + bb * t).toInt())
+    }
+    private fun lighter(c: Int) = mix(c, 0xFFFFFFFF.toInt(), 0.3f)
+    private fun darker(c: Int) = mix(c, 0xFF000000.toInt(), 0.4f)
+
+    fun shadow(c: Canvas, cx: Float, cy: Float, rx: Float, ry: Float) {
+        p.shader = null; p.style = Paint.Style.FILL; p.color = 0x55000000
+        c.drawOval(RectF(cx - rx, cy - ry, cx + rx, cy + ry), p)
+    }
+    private fun gradRect(c: Canvas, l: Float, t: Float, r: Float, b: Float, rad: Float, cTop: Int, cBot: Int) {
+        p.style = Paint.Style.FILL
+        p.shader = android.graphics.LinearGradient(l, t, l, b, intArrayOf(cTop, cBot), null, Shader.TileMode.CLAMP)
+        c.drawRoundRect(RectF(l, t, r, b), rad, rad, p)
+        p.shader = null
+    }
+
+    /** Jang maydoni uchun soldat (oldindan yoki orqadan ko'rinish) */
+    fun trooper(c: Canvas, x: Float, groundY: Float, s: Float, cloth: Int, front: Boolean, type: TroopType) {
+        shadow(c, x, groundY, s * 0.42f, s * 0.13f)
+        when (type) {
+            TroopType.OTLIQ -> horseToken(c, x, groundY, s, cloth, front)
+            TroopType.QAMAL -> { siege(c, x, groundY, s, 1) }
+            else -> footToken(c, x, groundY, s, cloth, front, type)
+        }
+    }
+
+    private fun footToken(c: Canvas, x: Float, g: Float, s: Float, cloth: Int, front: Boolean, type: TroopType) {
+        val heavy = type == TroopType.ZIRH
+        // oyoqlar
+        line(c, Palette.BROWN_DARK, s * 0.1f, x - s * 0.09f, g - s * 0.28f, x - s * 0.11f, g)
+        line(c, Palette.BROWN_DARK, s * 0.1f, x + s * 0.09f, g - s * 0.28f, x + s * 0.11f, g)
+        // tana (gradient soya bilan)
+        val bw = if (heavy) s * 0.24f else s * 0.19f
+        gradRect(c, x - bw, g - s * 0.62f, x + bw, g - s * 0.24f, s * 0.06f, lighter(cloth), darker(cloth))
+        // bosh
+        val hy = g - s * 0.74f; val hr = s * 0.14f
+        if (front) {
+            circle(c, Palette.SKIN, x, hy, hr)
+            circle(c, 0xFF1A120A.toInt(), x - hr * 0.35f, hy, hr * 0.12f)
+            circle(c, 0xFF1A120A.toInt(), x + hr * 0.35f, hy, hr * 0.12f)
+        } else {
+            circle(c, darker(cloth), x, hy, hr)
+        }
+        // dubulg'a + yorug'lik
+        poly(c, Palette.STEEL, x - hr * 1.1f, hy, x, hy - s * 0.18f, x + hr * 1.1f, hy)
+        line(c, lighter(Palette.STEEL), s * 0.03f, x - hr * 0.4f, hy - s * 0.05f, x, hy - s * 0.14f)
+        if (heavy) poly(c, Palette.RED, x - s * 0.02f, hy - s * 0.16f, x, hy - s * 0.28f, x + s * 0.02f, hy - s * 0.16f)
+        when (type) {
+            TroopType.KAMONCHI -> {
+                path.reset()
+                val bx = x + s * 0.24f
+                path.moveTo(bx, g - s * 0.62f); path.quadTo(bx + s * 0.16f, g - s * 0.42f, bx, g - s * 0.22f)
+                sp.shader = null; sp.color = Palette.BROWN_LIGHT; sp.strokeWidth = s * 0.04f; c.drawPath(path, sp)
+                line(c, 0xFFEFE3C0.toInt(), s * 0.015f, bx, g - s * 0.62f, bx, g - s * 0.22f)
+            }
+            TroopType.PIYODA, TroopType.ZIRH -> {
+                // qalqon
+                val sr = if (heavy) s * 0.2f else s * 0.16f
+                circle(c, darker(cloth), x, g - s * 0.44f, sr)
+                circle(c, cloth, x, g - s * 0.44f, sr * 0.82f)
+                sp.shader = null; sp.color = Palette.GOLD; sp.strokeWidth = s * 0.03f; c.drawCircle(x, g - s * 0.44f, sr, sp)
+                circle(c, Palette.GOLD, x, g - s * 0.44f, s * 0.035f)
+                // nayza
+                line(c, Palette.BROWN_LIGHT, s * 0.04f, x + s * 0.26f, g - s * 0.95f, x + s * 0.26f, g - s * 0.2f)
+                poly(c, Palette.STEEL, x + s * 0.22f, g - s * 0.92f, x + s * 0.26f, g - s * 1.04f, x + s * 0.3f, g - s * 0.92f)
+            }
+            else -> {}
+        }
+    }
+
+    private fun horseToken(c: Canvas, x: Float, g: Float, s: Float, cloth: Int, front: Boolean) {
+        val horse = 0xFF5A3A1E.toInt()
+        line(c, darker(horse), s * 0.08f, x - s * 0.18f, g - s * 0.4f, x - s * 0.2f, g)
+        line(c, darker(horse), s * 0.08f, x + s * 0.18f, g - s * 0.4f, x + s * 0.2f, g)
+        gradRect(c, x - s * 0.26f, g - s * 0.62f, x + s * 0.26f, g - s * 0.3f, s * 0.12f, lighter(horse), darker(horse))
+        poly(c, horse, x - s * 0.06f, g - s * 0.6f, x, g - s * 0.95f, x + s * 0.14f, g - s * 0.92f, x + s * 0.1f, g - s * 0.55f)
+        ellipse(c, horse, x + s * 0.08f, g - s * 0.95f, s * 0.1f, s * 0.07f)
+        // chavandoz
+        gradRect(c, x - s * 0.12f, g - s * 1.0f, x + s * 0.12f, g - s * 0.6f, s * 0.05f, lighter(cloth), darker(cloth))
+        circle(c, Palette.SKIN, x, g - s * 1.08f, s * 0.12f)
+        poly(c, Palette.STEEL, x - s * 0.13f, g - s * 1.08f, x, g - s * 1.24f, x + s * 0.13f, g - s * 1.08f)
+        line(c, Palette.BROWN_LIGHT, s * 0.04f, x - s * 0.05f, g - s * 1.05f, x + s * 0.05f, g - s * 1.4f)
+        poly(c, Palette.STEEL, x + s * 0.02f, g - s * 1.38f, x + s * 0.05f, g - s * 1.46f, x + s * 0.08f, g - s * 1.36f)
+    }
+
+    /** O'yinchining kamonchi qahramoni (ekran pastida) */
+    fun heroBow(c: Canvas, cx: Float, baseY: Float, s: Float, pull: Float, aimDx: Float) {
+        // qo'llar
+        line(c, Palette.ROYAL, s * 0.14f, cx - s * 0.5f, baseY + s * 0.3f, cx, baseY - s * 0.1f)
+        line(c, Palette.ROYAL, s * 0.14f, cx + s * 0.5f, baseY + s * 0.3f, cx, baseY - s * 0.1f)
+        circle(c, Palette.SKIN, cx, baseY - s * 0.1f, s * 0.1f)
+        // kamon yoyi (tik)
+        path.reset()
+        path.moveTo(cx, baseY - s * 0.95f)
+        path.quadTo(cx + s * 0.42f, baseY - s * 0.4f, cx, baseY + s * 0.15f)
+        sp.shader = null; sp.color = Palette.BROWN_LIGHT; sp.strokeWidth = s * 0.07f; c.drawPath(path, sp)
+        // ip (pull bilan ortga tortiladi)
+        val pullX = cx - pull * s * 0.3f
+        line(c, 0xFFEFE3C0.toInt(), s * 0.02f, cx, baseY - s * 0.95f, pullX, baseY - s * 0.4f)
+        line(c, 0xFFEFE3C0.toInt(), s * 0.02f, cx, baseY + s * 0.15f, pullX, baseY - s * 0.4f)
+        // o'q (yuqoriga, aimDx tomon)
+        if (pull > 0.2f) {
+            val tipY = baseY - s * 0.4f - pull * s * 0.8f
+            line(c, Palette.PARCHMENT, s * 0.03f, pullX, baseY - s * 0.4f, pullX + aimDx * 0.3f, tipY)
+            poly(c, Palette.STEEL, pullX + aimDx * 0.3f - s * 0.05f, tipY + s * 0.06f,
+                pullX + aimDx * 0.3f, tipY - s * 0.04f, pullX + aimDx * 0.3f + s * 0.05f, tipY + s * 0.06f)
+        }
+    }
 }

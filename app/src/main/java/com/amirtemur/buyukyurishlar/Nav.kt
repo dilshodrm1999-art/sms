@@ -5,9 +5,9 @@ object Nav {
     fun startCampaign(game: Game, c: Campaign) {
         game.selectedCampaign = c
         game.setScreen(CutsceneScreen(game, c.cutscene,
-            if (c.isFinal) "YAKUN" else "QO'SHIN TO'PLASH", c.title) {
+            if (c.isFinal) "YAKUN" else "YO'LGA CHIQISH ▸", c.title) {
             if (c.isFinal) game.setScreen(EndingScreen(game))
-            else { game.playerArmy = Army(); game.setScreen(ArmyScreen(game)) }
+            else game.setScreen(TravelScreen(game))
         })
     }
 

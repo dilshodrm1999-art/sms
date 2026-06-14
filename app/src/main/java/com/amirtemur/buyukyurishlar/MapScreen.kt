@@ -91,12 +91,7 @@ class MapScreen(game: Game) : Screen(game) {
     }
 
     private fun startCampaign(c: Campaign) {
-        game.selectedCampaign = c
-        game.setScreen(CutsceneScreen(game, c.cutscene,
-            if (c.isFinal) "YAKUN" else "QO'SHIN TO'PLASH", c.title) {
-            if (c.isFinal) game.setScreen(EndingScreen(game))
-            else { game.playerArmy = Army(); game.setScreen(ArmyScreen(game)) }
-        })
+        Nav.startCampaign(game, c)
     }
 
     override fun draw(canvas: Canvas) {
